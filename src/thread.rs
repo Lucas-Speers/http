@@ -1,4 +1,6 @@
-use std::{net::TcpStream, sync::mpsc, thread::JoinHandle};
+use std::{io::{BufReader, BufWriter, Read, Write}, net::TcpStream, sync::mpsc, thread::JoinHandle};
+
+use crate::http;
 
 
 pub struct ThreadHandler {
@@ -44,6 +46,8 @@ fn job_handler(rx: mpsc::Receiver<TcpStream>) {
         }
         let x = x.unwrap();
 
-        println!("{:?}", x);   
+        http::handle_connection(x);
+
+        println!("done");
     }
 }

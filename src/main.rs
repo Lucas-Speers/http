@@ -1,5 +1,6 @@
 mod thread;
 mod tcp;
+mod http;
 
 use std::{fs, net::TcpListener, path::Path, sync::mpsc};
 
