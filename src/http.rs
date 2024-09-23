@@ -2,7 +2,11 @@ use std::{ffi::OsStr, io::{BufRead, BufReader, Read, Write}, net::TcpStream, pat
 
 use mime_guess::MimeGuess;
 
+use crate::SETTINGS;
+
 pub enum HttpError {
+    E400,
+    E403,
     E404,
     E500,
     CannotReturn,
@@ -44,68 +48,98 @@ fn get_true_path(path: &Path) -> Result<PathBuf, ()> {
     Ok(final_path)
 }
 
-pub fn handle_connection_with_error(mut stream: TcpStream) {
-    match handle_connection(&mut stream) {
-        Ok(_) => (),
-        Err(e) => {
-            match e {
-                HttpError::E404 => {
-                    stream.write_all(String::new().as_bytes());
-                },
-                HttpError::E500 => todo!(),
-                HttpError::CannotReturn => (),
+/// Takes a `TcpStream` and handles the http protocol
+pub fn handle_connection(mut stream: TcpStream) -> Result<(), HttpError> {
+    
+    let mut error: HttpError = HttpError::E404;
+
+    'okay: {
+        let mut reader = BufReader::new(&stream);
+    
+        let mut request = String::new();
+        match reader.read_line(&mut request) {
+            Ok(_) => (),
+            Err(_) => {
+                error = HttpError::E500;
+                break 'okay;
+            }
+        }
+    
+        println!("aaaa '{:?}'", request.split("\r").next());
+    
+        let mut path;
+        match request.split(" ").nth(1) {
+            Some(x) =>path = PathBuf::from(x),
+            _ => {
+                error = HttpError::E400;
+                break 'okay;
+            }
+        }
+    
+        match get_true_path(&path) {
+            Ok(x) => path = x,
+            Err(_) => {
+                error = HttpError::E403;
+                break 'okay;
+            },
+        }
+    
+        let mut content = Vec::new();
+        println!("{:?}", path);
+        let mut file = match std::fs::File::open(&path) {
+            Ok(x) => x,
+            Err(_) => {
+                error = HttpError::E404;
+                break 'okay;
+            },
+        };
+        match file.read_to_end(&mut content) {
+            Ok(_) => (),
+            Err(_) => {
+                error = HttpError::E500;
+                break 'okay;
+            },
+        }
+    
+        let guess = MimeGuess::from_path(path).first().unwrap().to_string();
+        println!("{guess}");
+    
+        let mut responce: Vec<u8> = Vec::new();
+    
+        responce.append(&mut "HTTP/1.1 200 OK\r\nContent-Type: ".as_bytes().to_vec());
+        responce.append(&mut guess.as_bytes().to_vec());
+        responce.append(&mut "\r\nContent-Length: ".as_bytes().to_vec());
+        responce.append(&mut content.len().to_string().as_bytes().to_vec());
+        responce.append(&mut "\r\n\r\n".as_bytes().to_vec());
+        responce.append(&mut content);
+    
+        match stream.write_all(&responce) {
+            Ok(_) => (),
+            Err(_) => return Err(HttpError::CannotReturn),
+        }
+    };
+    
+    let mut responce: Vec<u8> = Vec::new();
+    
+    match error {
+        HttpError::E400 => {
+            responce.append(&mut "HTTP/1.1 400 Bad Request\r\n\r\n\r\n".as_bytes().to_vec());
+        },
+        HttpError::E403 => {
+            responce.append(&mut "HTTP/1.1 403 Forbidden\r\n\r\n\r\n".as_bytes().to_vec());
+        },
+        HttpError::E404 => {
+            match SETTINGS.teapot {
+                true => responce.append(&mut "HTTP/1.1 418 I'm a teapot\r\n\r\n\r\n".as_bytes().to_vec()),
+                false => responce.append(&mut "HTTP/1.1 404 Not Found\r\n\r\n\r\n".as_bytes().to_vec()),
             }
         },
+        HttpError::E500 => {
+            responce.append(&mut "HTTP/1.1 500 Internal Server Error\r\n\r\n\r\n".as_bytes().to_vec());
+        },
+        HttpError::CannotReturn => return Err(error),
     }
-}
-
-/// Takes a `TcpStream` and handles the http protocol
-pub fn handle_connection(stream: &mut TcpStream) -> Result<(), HttpError> {
-
-    let mut reader = BufReader::new(&stream);
-
-    let mut request = String::new();
-    match reader.read_line(&mut request) {
-        Ok(_) => (),
-        Err(_) => return Err(HttpError::E500),
-    }
-
-    println!("aaaa '{:?}'", request.split("\r").next());
-
-    let mut path;
-    match request.split(" ").nth(1) {
-        Some(x) =>path = PathBuf::from(x),
-        _ => {return Ok(());}
-    }
-
-    match get_true_path(&path) {
-        Ok(x) => path = x,
-        Err(_) => return Ok(()),
-    }
-
-    let mut content = Vec::new();
-    println!("{:?}", path);
-    let mut file = match std::fs::File::open(&path) {
-        Ok(x) => x,
-        Err(_) => return Err(HttpError::E404),
-    };
-    match file.read_to_end(&mut content) {
-        Ok(_) => (),
-        Err(_) => return Err(HttpError::E500),
-    }
-
-    let guess = MimeGuess::from_path(path).first().unwrap().to_string();
-    println!("{guess}");
-
-    let mut responce: Vec<u8> = Vec::new();
-
-    responce.append(&mut "HTTP/1.1 200 OK\r\nContent-Type: ".as_bytes().to_vec());
-    responce.append(&mut guess.as_bytes().to_vec());
-    responce.append(&mut "\r\nContent-Length: ".as_bytes().to_vec());
-    responce.append(&mut content.len().to_string().as_bytes().to_vec());
-    responce.append(&mut "\r\n\r\n".as_bytes().to_vec());
-    responce.append(&mut content);
-
+    
     match stream.write_all(&responce) {
         Ok(_) => (),
         Err(_) => return Err(HttpError::CannotReturn),

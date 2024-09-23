@@ -14,7 +14,8 @@ pub struct Settings {
     port: u16,
     threads: usize,
     path: Box<Path>,
-    teapot: Option<bool>,
+    #[serde(default)]
+    teapot: bool,
 }
 
 pub static SETTINGS: LazyLock<Settings> = LazyLock::new(|| {
