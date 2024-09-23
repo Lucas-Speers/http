@@ -46,10 +46,9 @@ fn job_handler(rx: mpsc::Receiver<TcpStream>) {
         }
         let x = x.unwrap();
 
-        if http::handle_connection(x).is_err() {
-            println!("Err");
+        match http::handle_connection(x) {
+            Ok(_) => (),
+            Err(x) => println!("{:?}", x),
         }
-
-        println!("done");
     }
 }

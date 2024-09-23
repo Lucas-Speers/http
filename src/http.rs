@@ -4,6 +4,7 @@ use mime_guess::MimeGuess;
 
 use crate::SETTINGS;
 
+#[derive(Debug)]
 pub enum HttpError {
     E400,
     E403,
@@ -35,10 +36,7 @@ fn get_true_path(path: &Path) -> Result<PathBuf, ()> {
     }
 
     if !final_path.is_file() {
-        println!("not file");
-        println!("{:?}", final_path.with_added_extension("html"));
         if final_path.with_added_extension("html").is_file() {
-            println!("is file");
             final_path = final_path.with_added_extension("html");
         } else if final_path.join("index.html").is_file() {
             final_path = final_path.join("index.html");
@@ -65,8 +63,6 @@ pub fn handle_connection(mut stream: TcpStream) -> Result<(), HttpError> {
             }
         }
     
-        println!("aaaa '{:?}'", request.split("\r").next());
-    
         let mut path;
         match request.split(" ").nth(1) {
             Some(x) =>path = PathBuf::from(x),
@@ -85,7 +81,6 @@ pub fn handle_connection(mut stream: TcpStream) -> Result<(), HttpError> {
         }
     
         let mut content = Vec::new();
-        println!("{:?}", path);
         let mut file = match std::fs::File::open(&path) {
             Ok(x) => x,
             Err(_) => {
@@ -102,7 +97,6 @@ pub fn handle_connection(mut stream: TcpStream) -> Result<(), HttpError> {
         }
     
         let guess = MimeGuess::from_path(path).first().unwrap().to_string();
-        println!("{guess}");
     
         let mut responce: Vec<u8> = Vec::new();
     
